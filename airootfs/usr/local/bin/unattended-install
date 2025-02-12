@@ -13,7 +13,7 @@ readonly LVM_ENCRYPTED="lvm_encrypted"
 
 installation_type=$EXT4_UNENCRYPTED
 encryption_key=""
-root_passwd=""
+root_passwd="arch"
 timezone=$(date "+%Z")
 
 usage() {
@@ -161,7 +161,7 @@ while [[ "$#" -gt 0 ]]; do
     shift
 done
 
-if [[ -z "$installation_type" || -z "$root_passwd" || ("$installation_type" = "$LVM_ENCRYPTED" && -z "$encryption_key") ]]; then
+if [[ -z "$installation_type" || ("$installation_type" = "$LVM_ENCRYPTED" && -z "$encryption_key") ]]; then
     usage
 fi
 
