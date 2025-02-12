@@ -17,7 +17,15 @@ root_passwd="arch"
 hostname="arch"
 timezone=$(date "+%Z")
 
+swap_size=$(free --giga|grep "Mem"|awk '{print $2}')G
+
 usage() {
+    # installation type --> default ext4
+    # encryption_key
+    # root_passwd --> default arch
+    # hostname --> default arch
+    # timezone --> default current (UTC)
+    # swap --> default = RAM // IN GIGABYTES!! // DISABLE EMPTY
     echo "Uso: $0 --parametro1 <valor1> --parametro2 <valor2> ... --parametron <valorn>"
     exit 1
 }
@@ -92,7 +100,9 @@ EOF
 format_partitions() {
     echo "Formatting partitions"
     mkfs.fat -F 32 $BOOT_PARTITION
-    mkswap $SWAP_PARTITION
+    if [ -n $swap_size ]; then
+        mkswap $SWAP_PARTITION
+    fi
     mkfs.ext4 $ROOT_PARTITION
     mkfs.ext4 $HOME_PARTITION
 }
@@ -107,8 +117,10 @@ mount_partitions() {
     mount $BOOT_PARTITION /mnt/boot
     mount $HOME_PARTITION /mnt/home
 
-    echo "Enabling swap..."
-    swapon $SWAP_PARTITION
+    if [ -n $swap_size ]; then
+        echo "Enabling swap..."
+        swapon $SWAP_PARTITION
+    fi
 }
 
 lvm_setup() {
@@ -117,7 +129,9 @@ lvm_setup() {
     echo "Creating volume group..."
     vgcreate ArchLinuxVG $MAIN_PARTITION
     echo "Creating logical volumes..."
-    lvcreate --yes -L 16G -n swap /dev/ArchLinuxVG
+    if [ -n $swap_size ]; then
+        lvcreate --yes -L "$swap_size" -n swap /dev/ArchLinuxVG
+    fi
     lvcreate --yes -L 50G -n root /dev/ArchLinuxVG
     lvcreate --yes -l 100%FREE -n home /dev/ArchLinuxVG
 }
@@ -159,6 +173,10 @@ while [[ "$#" -gt 0 ]]; do
             hostname="$2";
             shift
             ;;
+        --swap)
+            swap_size="$2"
+            shift
+            ;;
         *)
             usage
             ;;
@@ -184,17 +202,19 @@ case "$installation_type" in
     $EXT4_UNENCRYPTED)
         echo "Using unencrypted ext4 partitions"
         sleep .5
+
+        sfdisk_cmd="label:gpt\nsize=1G,type=uefi,name=ArchBoot\n"
+        if [ -n "$swap_size" ]; then
+            sfdisk_cmd+="size=$swap_size,type=swap,name=ArchSwap\n"
+        fi
+        sfdisk_cmd+="size=50G,type=linux,name=ArchRoot\n"
+        sfdisk_cmd+="size=-,type=linux,name=ArchHome"
+
         echo "Creating partitions..."
-        sfdisk \
+        echo -e "$sfdisk_cmd" | sfdisk \
             --wipe-partitions always \
             --backup \
-            $MAIN_DRIVE_DEVICE << EOF
-            label: gpt
-            size=1G,type=uefi,name=ArchBoot
-            size=16G,type=swap,name=ArchSwap
-            size=50G,type=linux,name=ArchRoot
-            size=-,type=linux,name=ArchHome
-EOF
+            "$MAIN_DRIVE_DEVICE"
 
         sleep .1
 
