@@ -6,13 +6,14 @@ readonly USB_DEVICE="/dev/disk/by-id/$USB_DEVICE_ID"
 readonly MAIN_DRIVE_ID="ata-VBOX_HARDDISK_VBc6278c2a-190d4419" 
 readonly MAIN_DRIVE_DEVICE="/dev/disk/by-id/$MAIN_DRIVE_ID" 
 
-readonly EXT4_UNENCRYPTED=1
+readonly EXT4_UNENCRYPTED="ext4"
 
-readonly LVM_UNENCRYPTED=2
-readonly LVM_ENCRYPTED=3
+readonly LVM_UNENCRYPTED="lvm"
+readonly LVM_ENCRYPTED="lvm_encrypted"
 
 installation_type=$EXT4_UNENCRYPTED
 encryption_key=""
+root_passwd=""
 
 usage() {
     echo "Uso: $0 --parametro1 <valor1> --parametro2 <valor2> ... --parametron <valorn>"
@@ -39,6 +40,9 @@ post_install() {
 
         echo "Setting hostname..."
         echo abdn > /etc/hostname
+
+        echo "Setting root password..."
+        echo "root:$root_passwd" | chpasswd
 EOF
 }
 
@@ -70,12 +74,12 @@ install_grub() {
         pacman -S --noconfirm grub efibootmgr
         grub-install --target=x86_64-efi --efi-directory=/boot --bootloader-id=ArchLinuxGRUB
 
-        if [ $installation_type -eq $LVM_ENCRYPTED ]; then
+        if [ "$installation_type" = "$LVM_ENCRYPTED" ]; then
             uuid=\$(blkid -t PARTLABEL=ArchLVM|awk '{print \$2}'|tr -d \")
             sed -i "s/^GRUB_CMDLINE_LINUX_DEFAULT=\"[^\"]*/& cryptdevice=\$uuid:cryptlvm/" /etc/default/grub
         fi
 
-        if [ $installation_type -eq $LVM_UNENCRYPTED ] || [ $installation_type -eq $LVM_ENCRYPTED ]; then
+        if [ "$installation_type" = "$LVM_UNENCRYPTED" ] || [ "$installation_type" = "$LVM_ENCRYPTED" ]; then
             sed -i 's/^GRUB_CMDLINE_LINUX_DEFAULT="[^"]*/& root=\/dev\/ArchLinuxVG\/root/' /etc/default/grub
         fi
 
@@ -141,6 +145,10 @@ while [[ "$#" -gt 0 ]]; do
             encryption_key="$2";
             shift
             ;;
+        --root_passwd|-p)
+            root_passwd="$2";
+            shift
+            ;;
         *)
             usage
             ;;
@@ -148,7 +156,7 @@ while [[ "$#" -gt 0 ]]; do
     shift
 done
 
-if [[ -z "$installation_type" || ($installation_type -eq $LVM_ENCRYPTED) && (-z $encryption_key) ]]; then
+if [[ -z "$installation_type" || -z "$root_passwd" || ("$installation_type" = "$LVM_ENCRYPTED" && -z "$encryption_key") ]]; then
     usage
 fi
 
@@ -162,7 +170,7 @@ if ! ping -c 1 archlinux.org > /dev/null 2>&1; then
     exit 1
 fi
 
-case $installation_type in
+case "$installation_type" in
     $EXT4_UNENCRYPTED)
         echo "Using unencrypted ext4 partitions"
         sleep .5
