@@ -3,7 +3,7 @@
 readonly USB_DEVICE_ID="ata-VBOX_HARDDISK_VBc97770ca-2e3eabdb" # For encrypted /boot and LUKS header
 readonly USB_DEVICE="/dev/disk/by-id/$USB_DEVICE_ID"
 
-readonly MAIN_DRIVE_ID="ata-VBOX_HARDDISK_VB320e6ec8-47788869" 
+readonly MAIN_DRIVE_ID="ata-VBOX_HARDDISK_VBc6278c2a-190d4419" 
 readonly MAIN_DRIVE_DEVICE="/dev/disk/by-id/$MAIN_DRIVE_ID" 
 
 readonly EXT4_UNENCRYPTED=1
@@ -43,22 +43,42 @@ EOF
 }
 
 add_lvm2_hook() {
-    arch-chroot /mnt /bin/bash << EOF 
+    arch-chroot /mnt /bin/bash << EOF
         echo "Adding lvm2 hook..."
         sed -ri "s/(^HOOKS=.*)(block)(.*)(filesystems)/\1\2 lvm2 \4/" /etc/mkinitcpio.conf
+EOF
+}
+
+add_encrypt_hook() {
+    arch-chroot /mnt /bin/bash << EOF
+        echo "Adding encrypt hook..."
+        sed -ri "s/(^HOOKS=.*)(block)(.*)(lvm2)/\1\2 encrypt \4/" /etc/mkinitcpio.conf
+EOF
+}
+
+regenerate_initramfs() {
+    arch-chroot /mnt /bin/bash << EOF
         echo "Regenerating initramfs..."
         mkinitcpio -P
 EOF
 }
+
 
 install_grub() {
     arch-chroot /mnt /bin/bash << EOF 
         echo "Installing and configuring GRUB..."
         pacman -S --noconfirm grub efibootmgr
         grub-install --target=x86_64-efi --efi-directory=/boot --bootloader-id=ArchLinuxGRUB
-        if [ $installation_type -eq $LVM_UNENCRYPTED ]; then
+
+        if [ $installation_type -eq $LVM_ENCRYPTED ]; then
+            uuid=\$(blkid -t PARTLABEL=ArchLVM|awk '{print \$2}'|tr -d \")
+            sed -i "s/^GRUB_CMDLINE_LINUX_DEFAULT=\"[^\"]*/& cryptdevice=\$uuid:cryptlvm/" /etc/default/grub
+        fi
+
+        if [ $installation_type -eq $LVM_UNENCRYPTED ] || [ $installation_type -eq $LVM_ENCRYPTED ]; then
             sed -i 's/^GRUB_CMDLINE_LINUX_DEFAULT="[^"]*/& root=\/dev\/ArchLinuxVG\/root/' /etc/default/grub
         fi
+
         grub-mkconfig -o /boot/grub/grub.cfg
 EOF
 }
@@ -77,7 +97,7 @@ while [[ "$#" -gt 0 ]]; do
     shift
 done
 
-if [[ -z "$installation_type" ]]; then
+if [[ -z "$installation_type" || ($installation_type -eq $LVM_ENCRYPTED) && (-z $encryption_key) ]]; then
     usage
 fi
 
@@ -181,9 +201,65 @@ EOF
 
         post_install
         add_lvm2_hook
+        regenerate_initramfs
         install_grub
         ;;
     $LVM_ENCRYPTED)
+        echo "Using encrypted lvm partitions"
+        sleep .5
+        echo "Wiping previous signatures..."
+        wipefs --all $MAIN_DRIVE_DEVICE
+        echo "Creating boot partition..."
+        sfdisk \
+            --wipe-partitions always \
+            --backup \
+            $MAIN_DRIVE_DEVICE << EOF
+            label: gpt
+            size=1G,type=uefi,name=ArchBoot
+            size=-,type=lvm,name=ArchLVM
+EOF
+        sleep .1
+
+        echo "Encrypting partition..."
+        echo $encryption_key | cryptsetup luksFormat /dev/disk/by-partlabel/ArchLVM
+        echo "Open encrypted partition..."
+        echo $encryption_key | cryptsetup open /dev/disk/by-partlabel/ArchLVM cryptlvm
+
+        echo "Creating physical volume..."
+        pvcreate /dev/mapper/cryptlvm
+        echo "Creating volume group..."
+        vgcreate ArchLinuxVG /dev/mapper/cryptlvm
+        echo "Creating logical volumes..."
+        lvcreate --yes -L 16G -n swap /dev/ArchLinuxVG
+        lvcreate --yes -L 50G -n root /dev/ArchLinuxVG
+        lvcreate --yes -l 100%FREE -n home /dev/ArchLinuxVG
+
+        echo "Formatting partitions"
+        mkfs.fat -F 32 /dev/disk/by-partlabel/ArchBoot
+        mkswap /dev/ArchLinuxVG/swap
+        mkfs.ext4 /dev/ArchLinuxVG/root
+        mkfs.ext4 /dev/ArchLinuxVG/home
+
+        mount /dev/ArchLinuxVG/root /mnt
+
+        echo "Creating mountpoints..."
+        mkdir /mnt/boot /mnt/home
+
+        echo "Mounting partitions..."
+        mount /dev/disk/by-partlabel/ArchBoot /mnt/boot
+        mount /dev/ArchLinuxVG/home /mnt/home
+
+        echo "Enabling swap..."
+        swapon /dev/ArchLinuxVG/swap
+
+        echo "Installing base packages..."
+        pacstrap -K /mnt base linux linux-firmware vim lvm2 man-db man-pages texinfo
+
+        post_install
+        add_lvm2_hook
+        add_encrypt_hook
+        regenerate_initramfs
+        install_grub
     ;;
     5)# experiment
     ;;
