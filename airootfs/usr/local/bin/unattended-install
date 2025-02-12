@@ -53,8 +53,12 @@ EOF
 
 install_grub() {
     arch-chroot /mnt /bin/bash << EOF 
+        echo "Installing and configuring GRUB..."
         pacman -S --noconfirm grub efibootmgr
         grub-install --target=x86_64-efi --efi-directory=/boot --bootloader-id=ArchLinuxGRUB
+        if [ $installation_type -eq $LVM_UNENCRYPTED ]; then
+            sed -i 's/^GRUB_CMDLINE_LINUX_DEFAULT="[^"]*/& root=\/dev\/ArchLinuxVG\/root/' /etc/default/grub
+        fi
         grub-mkconfig -o /boot/grub/grub.cfg
 EOF
 }
@@ -134,18 +138,28 @@ EOF
         sleep .5
         echo "Wiping previous signatures..."
         wipefs --all $MAIN_DRIVE_DEVICE
+        echo "Creating boot partition..."
+        sfdisk \
+            --wipe-partitions always \
+            --backup \
+            $MAIN_DRIVE_DEVICE << EOF
+            label: gpt
+            size=1G,type=uefi,name=ArchBoot
+            size=-,type=lvm,name=ArchLVM
+EOF
+        sleep .1
+
         echo "Creating physical volume..."
-        pvcreate $MAIN_DRIVE_DEVICE
+        pvcreate /dev/disk/by-partlabel/ArchLVM
         echo "Creating volume group..."
-        vgcreate ArchLinuxVG $MAIN_DRIVE_DEVICE
+        vgcreate ArchLinuxVG /dev/disk/by-partlabel/ArchLVM
         echo "Creating logical volumes..."
-        lvcreate --yes -L 1G -n boot /dev/ArchLinuxVG
         lvcreate --yes -L 16G -n swap /dev/ArchLinuxVG
         lvcreate --yes -L 50G -n root /dev/ArchLinuxVG
         lvcreate --yes -l 100%FREE -n home /dev/ArchLinuxVG
 
         echo "Formatting partitions"
-        mkfs.fat -F 32 /dev/ArchLinuxVG/boot
+        mkfs.fat -F 32 /dev/disk/by-partlabel/ArchBoot
         mkswap /dev/ArchLinuxVG/swap
         mkfs.ext4 /dev/ArchLinuxVG/root
         mkfs.ext4 /dev/ArchLinuxVG/home
@@ -156,7 +170,7 @@ EOF
         mkdir /mnt/boot /mnt/home
 
         echo "Mounting partitions..."
-        mount /dev/ArchLinuxVG/boot /mnt/boot
+        mount /dev/disk/by-partlabel/ArchBoot /mnt/boot
         mount /dev/ArchLinuxVG/home /mnt/home
 
         echo "Enabling swap..."
