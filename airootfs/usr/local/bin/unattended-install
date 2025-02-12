@@ -3,120 +3,176 @@
 readonly USB_DEVICE_ID="ata-VBOX_HARDDISK_VBc97770ca-2e3eabdb" # For encrypted /boot and LUKS header
 readonly USB_DEVICE="/dev/disk/by-id/$USB_DEVICE_ID"
 
-readonly MAIN_DRIVE_ID="ata-VBOX_HARDDISK_VB09f7caaa-60350dbb" 
+readonly MAIN_DRIVE_ID="ata-VBOX_HARDDISK_VB320e6ec8-47788869" 
 readonly MAIN_DRIVE_DEVICE="/dev/disk/by-id/$MAIN_DRIVE_ID" 
 
-echo "Running automated archlinux installation at $(date --iso-8601=seconds)..."
+readonly EXT4_UNENCRYPTED=1
 
-sleep 2
+readonly LVM_UNENCRYPTED=2
+readonly LVM_ENCRYPTED=3
+
+installation_type=$EXT4_UNENCRYPTED
+encryption_key=""
+
+usage() {
+    echo "Uso: $0 --parametro1 <valor1> --parametro2 <valor2> ... --parametron <valorn>"
+    exit 1
+}
+
+post_install() {
+    echo "Creating fstab..."
+    genfstab -U /mnt >> /mnt/etc/fstab
+
+    echo "Chroot..."
+    arch-chroot /mnt /bin/bash << EOF
+        echo "Setting timezone..."
+        ln -sf /usr/share/zoneinfo/Europe/Madrid /etc/localtime
+
+        echo "Setting hardware clock"
+        hwclock --systohc
+
+        sed -i "/en_US.UTF-8\|es_ES.UTF-8/s/^#//" /etc/locale.gen
+        locale-gen
+
+        echo "Setting default lang..."
+        echo -e "LANG=es_ES.UTF-8\nLC_MESSAGES=en_US.UTF-8" > /etc/locale.conf
+
+        echo "Setting hostname..."
+        echo abdn > /etc/hostname
+EOF
+}
+
+add_lvm2_hook() {
+    arch-chroot /mnt /bin/bash << EOF 
+        echo "Adding lvm2 hook..."
+        sed -ri "s/(^HOOKS=.*)(block)(.*)(filesystems)/\1\2 lvm2 \4/" /etc/mkinitcpio.conf
+        echo "Regenerating initramfs..."
+        mkinitcpio -P
+EOF
+}
+
+install_grub() {
+    arch-chroot /mnt /bin/bash << EOF 
+        pacman -S --noconfirm grub efibootmgr
+        grub-install --target=x86_64-efi --efi-directory=/boot --bootloader-id=ArchLinuxGRUB
+        grub-mkconfig -o /boot/grub/grub.cfg
+EOF
+}
+
+while [[ "$#" -gt 0 ]]; do
+    case $1 in
+        --installation_type)
+            installation_type="$2";
+            shift ;;
+        --encryption_key)
+            encryption_key="$2";
+            shift ;;
+        *)
+            usage ;;
+    esac
+    shift
+done
+
+if [[ -z "$installation_type" ]]; then
+    usage
+fi
+
+echo "Running unattended archlinux installation at $(date --rfc-3339=seconds)..."
+
+sleep 1
 
 echo "Testing internet connection..."
 if ! ping -c 1 archlinux.org > /dev/null 2>&1; then
-    echo "ERROR: No Internet Connection. Please check your connection and try again."
+    echo "[unattended-install] ERROR: No Internet Connection. Please check your connection and try again."
     exit 1
 fi
 
-echo "Partitioning USB ..."
-sfdisk --append \
-    --wipe-partitions always \
-    --backup \
-    --quiet \
-    $USB_DEVICE << EOF
-    size=512M,type=uefi,name=ArchUEFI
-    size=1G,name=ArchBoot
+case $installation_type in
+    $EXT4_UNENCRYPTED)
+        echo "Using unencrypted ext4 partitions"
+        sleep .5
+        echo "Creating partitions..."
+        sfdisk \
+            --wipe-partitions always \
+            --backup \
+            $MAIN_DRIVE_DEVICE << EOF
+            label: gpt
+            size=1G,type=uefi,name=ArchBoot
+            size=16G,type=swap,name=ArchSwap
+            size=50G,type=linux,name=ArchRoot
+            size=-,type=linux,name=ArchHome
 EOF
 
-sleep .1
+        sleep .1
 
-echo "Encrypting /boot partition ..."
-echo "abc123" | cryptsetup --type luks2 \
-    --cipher aes-xts-plain64 \
-    --key-size 512 \
-    --pbkdf pbkdf2 \
-    --hash sha512 \
-    --iter-time 5000 \
-    --batch-mode \
-    luksFormat /dev/disk/by-partlabel/ArchBoot
+        echo "Formatting partitions"
+        mkfs.fat -F 32 /dev/disk/by-partlabel/ArchBoot
+        mkswap /dev/disk/by-partlabel/ArchSwap
+        mkfs.ext4 /dev/disk/by-partlabel/ArchRoot
+        mkfs.ext4 /dev/disk/by-partlabel/ArchHome
 
-echo "Opening recently created mapper..."
-echo "abc123" | cryptsetup open /dev/disk/by-partlabel/ArchBoot boot
+        mount /dev/disk/by-partlabel/ArchRoot /mnt
 
-echo "Formating boot partition..."
-mkfs.ext4 /dev/mapper/boot
+        echo "Creating mountpoints..."
+        mkdir /mnt/boot /mnt/home
 
-echo "Creating key file..."
-dd if=/dev/urandom of=key.img bs=4M count=1 iflag=fullblock
+        echo "Mounting partitions..."
+        mount /dev/disk/by-partlabel/ArchBoot /mnt/boot
+        mount /dev/disk/by-partlabel/ArchHome /mnt/home
 
-echo "Creating header file..."
-truncate -s 16M header.img
+        echo "Enabling swap..."
+        swapon /dev/disk/by-partlabel/ArchSwap
 
-echo "Encrypting main drive..."
-cryptsetup --type luks2 \
-    --cipher aes-xts-plain64 \
-    --hash sha512 \
-    --key-size 512 \
-    --pbkdf argon2id \
-    --use-urandom \
-    --iter-time 5000 \
-    --batch-mode \
-    luksFormat $MAIN_DRIVE_DEVICE \
-    --header=header.img \
-    --key-file=key.img
+        echo "Installing base packages..."
+        pacstrap -K /mnt base linux linux-firmware vim man-db man-pages texinfo
 
-echo "Opening main drive..."
-cryptsetup \
-    --header=header.img \
-    --key-file=key.img \
-    open $MAIN_DRIVE_DEVICE root
+        post_install
+        install_grub
+        ;;
+    $LVM_UNENCRYPTED)
+        echo "Using unencrypted lvm partitions"
+        sleep .5
+        echo "Wiping previous signatures..."
+        wipefs --all $MAIN_DRIVE_DEVICE
+        echo "Creating physical volume..."
+        pvcreate $MAIN_DRIVE_DEVICE
+        echo "Creating volume group..."
+        vgcreate ArchLinuxVG $MAIN_DRIVE_DEVICE
+        echo "Creating logical volumes..."
+        lvcreate --yes -L 1G -n boot /dev/ArchLinuxVG
+        lvcreate --yes -L 16G -n swap /dev/ArchLinuxVG
+        lvcreate --yes -L 50G -n root /dev/ArchLinuxVG
+        lvcreate --yes -l 100%FREE -n home /dev/ArchLinuxVG
 
-echo "LVM Setup..."
-pvcreate /dev/mapper/root
-vgcreate ArchLinuxVG /dev/mapper/root
+        echo "Formatting partitions"
+        mkfs.fat -F 32 /dev/ArchLinuxVG/boot
+        mkswap /dev/ArchLinuxVG/swap
+        mkfs.ext4 /dev/ArchLinuxVG/root
+        mkfs.ext4 /dev/ArchLinuxVG/home
 
-lvcreate -L $(free -h|grep "Mem:"|awk '{print $2}') -n swap ArchLinuxVG
-lvcreate -l 100%FREE -n root ArchLinuxVG
+        mount /dev/ArchLinuxVG/root /mnt
 
-echo "Formating partitions..."
-mkfs.ext4 /dev/ArchLinuxVG/root
-#mkfs.ext4 /dev/ArchLinuxVG/home
+        echo "Creating mountpoints..."
+        mkdir /mnt/boot /mnt/home
 
-mkswap /dev/ArchLinuxVG/swap
+        echo "Mounting partitions..."
+        mount /dev/ArchLinuxVG/boot /mnt/boot
+        mount /dev/ArchLinuxVG/home /mnt/home
 
-echo "Mounting partitions..."
-mount /dev/ArchLinuxVG/root /mnt
+        echo "Enabling swap..."
+        swapon /dev/ArchLinuxVG/swap
 
-echo "Creating mountpoints..."
-mkdir /mnt/boot /mnt/efi
+        echo "Installing base packages..."
+        pacstrap -K /mnt base linux linux-firmware vim lvm2 man-db man-pages texinfo
 
-echo "Mounting partitions..."
-mount /dev/mapper/boot /mnt/boot
-mount /dev/disk/by-partlabel/ArchUEFI /mnt/efi
-
-#mount /dev/ArchLinuxVG/home /mnt/home
-
-echo "Enabling swap..."
-swapon /dev/ArchLinuxVG/swap
-
-echo "Installing base packages..."
-pacstrap -K /mnt base linux linux-firmware lvm2 vim man-db man-pages texinfo
-
-echo "Creating fstab..."
-genfstab -U /mnt >> /mnt/etc/fstab
-
-echo "Chroot..."
-arch-chroot /mnt /bin/bash << EOF
-    echo "Setting timezone..."
-    ln -sf /usr/share/zoneinfo/Europe/Madrid /etc/localtime
-
-    echo "Setting hardware clock"
-    hwclock --systohc
-
-    sed -i "/en_US.UTF-8\|es_ES.UTF-8/s/^#//" /etc/locale.gen
-    locale-gen
-
-    echo "Setting default lang..."
-    echo -e "LANG=es_ES.UTF-8\nLC_MESSAGES=en_US.UTF-8" > /etc/locale.conf
-
-    echo "Setting hostname..."
-    echo abdn > /etc/hostname
-EOF
+        post_install
+        add_lvm2_hook
+        install_grub
+        ;;
+    $LVM_ENCRYPTED)
+    ;;
+    5)# experiment
+    ;;
+    *)
+    ;;
+esac
