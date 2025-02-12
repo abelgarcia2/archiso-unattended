@@ -83,16 +83,67 @@ install_grub() {
 EOF
 }
 
+format_partitions() {
+    echo "Formatting partitions"
+    mkfs.fat -F 32 $BOOT_PARTITION
+    mkswap $SWAP_PARTITION
+    mkfs.ext4 $ROOT_PARTITION
+    mkfs.ext4 $HOME_PARTITION
+}
+
+mount_partitions() {
+    mount $ROOT_PARTITION /mnt
+
+    echo "Creating mountpoints..."
+    mkdir /mnt/boot /mnt/home
+
+    echo "Mounting partitions..."
+    mount $BOOT_PARTITION /mnt/boot
+    mount $HOME_PARTITION /mnt/home
+
+    echo "Enabling swap..."
+    swapon $SWAP_PARTITION
+}
+
+lvm_setup() {
+    echo "Creating physical volume..."
+    pvcreate $MAIN_PARTITION
+    echo "Creating volume group..."
+    vgcreate ArchLinuxVG $MAIN_PARTITION
+    echo "Creating logical volumes..."
+    lvcreate --yes -L 16G -n swap /dev/ArchLinuxVG
+    lvcreate --yes -L 50G -n root /dev/ArchLinuxVG
+    lvcreate --yes -l 100%FREE -n home /dev/ArchLinuxVG
+}
+
+create_lvm_partitions() {
+    echo "Wiping previous signatures..."
+    wipefs --all $MAIN_DRIVE_DEVICE
+    echo "Creating boot partition..."
+    sfdisk \
+        --wipe-partitions always \
+        --backup \
+        $MAIN_DRIVE_DEVICE << EOF
+        label: gpt
+        size=1G,type=uefi,name=ArchBoot
+        size=-,type=lvm,name=ArchLVM
+EOF
+    sleep .1
+}
+
 while [[ "$#" -gt 0 ]]; do
     case $1 in
-        --installation_type)
+        --installation_type|-t)
             installation_type="$2";
-            shift ;;
-        --encryption_key)
+            shift
+            ;;
+        --encryption_key|-e)
             encryption_key="$2";
-            shift ;;
+            shift
+            ;;
         *)
-            usage ;;
+            usage
+            ;;
     esac
     shift
 done
@@ -129,23 +180,13 @@ EOF
 
         sleep .1
 
-        echo "Formatting partitions"
-        mkfs.fat -F 32 /dev/disk/by-partlabel/ArchBoot
-        mkswap /dev/disk/by-partlabel/ArchSwap
-        mkfs.ext4 /dev/disk/by-partlabel/ArchRoot
-        mkfs.ext4 /dev/disk/by-partlabel/ArchHome
+        readonly BOOT_PARTITION="/dev/disk/by-partlabel/ArchBoot"
+        readonly SWAP_PARTITION="/dev/disk/by-partlabel/ArchSwap"
+        readonly ROOT_PARTITION="/dev/disk/by-partlabel/ArchRoot"
+        readonly HOME_PARTITION="/dev/disk/by-partlabel/ArchHome"
 
-        mount /dev/disk/by-partlabel/ArchRoot /mnt
-
-        echo "Creating mountpoints..."
-        mkdir /mnt/boot /mnt/home
-
-        echo "Mounting partitions..."
-        mount /dev/disk/by-partlabel/ArchBoot /mnt/boot
-        mount /dev/disk/by-partlabel/ArchHome /mnt/home
-
-        echo "Enabling swap..."
-        swapon /dev/disk/by-partlabel/ArchSwap
+        format_partitions
+        mount_partitions
 
         echo "Installing base packages..."
         pacstrap -K /mnt base linux linux-firmware vim man-db man-pages texinfo
@@ -156,45 +197,20 @@ EOF
     $LVM_UNENCRYPTED)
         echo "Using unencrypted lvm partitions"
         sleep .5
-        echo "Wiping previous signatures..."
-        wipefs --all $MAIN_DRIVE_DEVICE
-        echo "Creating boot partition..."
-        sfdisk \
-            --wipe-partitions always \
-            --backup \
-            $MAIN_DRIVE_DEVICE << EOF
-            label: gpt
-            size=1G,type=uefi,name=ArchBoot
-            size=-,type=lvm,name=ArchLVM
-EOF
-        sleep .1
 
-        echo "Creating physical volume..."
-        pvcreate /dev/disk/by-partlabel/ArchLVM
-        echo "Creating volume group..."
-        vgcreate ArchLinuxVG /dev/disk/by-partlabel/ArchLVM
-        echo "Creating logical volumes..."
-        lvcreate --yes -L 16G -n swap /dev/ArchLinuxVG
-        lvcreate --yes -L 50G -n root /dev/ArchLinuxVG
-        lvcreate --yes -l 100%FREE -n home /dev/ArchLinuxVG
+        create_lvm_partitions
 
-        echo "Formatting partitions"
-        mkfs.fat -F 32 /dev/disk/by-partlabel/ArchBoot
-        mkswap /dev/ArchLinuxVG/swap
-        mkfs.ext4 /dev/ArchLinuxVG/root
-        mkfs.ext4 /dev/ArchLinuxVG/home
+        readonly MAIN_PARTITION="/dev/disk/by-partlabel/ArchLVM"
 
-        mount /dev/ArchLinuxVG/root /mnt
+        lvm_setup
 
-        echo "Creating mountpoints..."
-        mkdir /mnt/boot /mnt/home
+        readonly BOOT_PARTITION="/dev/disk/by-partlabel/ArchBoot"
+        readonly SWAP_PARTITION="/dev/ArchLinuxVG/swap"
+        readonly ROOT_PARTITION="/dev/ArchLinuxVG/root"
+        readonly HOME_PARTITION="/dev/ArchLinuxVG/home"
 
-        echo "Mounting partitions..."
-        mount /dev/disk/by-partlabel/ArchBoot /mnt/boot
-        mount /dev/ArchLinuxVG/home /mnt/home
-
-        echo "Enabling swap..."
-        swapon /dev/ArchLinuxVG/swap
+        format_partitions
+        mount_partitions
 
         echo "Installing base packages..."
         pacstrap -K /mnt base linux linux-firmware vim lvm2 man-db man-pages texinfo
@@ -207,50 +223,25 @@ EOF
     $LVM_ENCRYPTED)
         echo "Using encrypted lvm partitions"
         sleep .5
-        echo "Wiping previous signatures..."
-        wipefs --all $MAIN_DRIVE_DEVICE
-        echo "Creating boot partition..."
-        sfdisk \
-            --wipe-partitions always \
-            --backup \
-            $MAIN_DRIVE_DEVICE << EOF
-            label: gpt
-            size=1G,type=uefi,name=ArchBoot
-            size=-,type=lvm,name=ArchLVM
-EOF
-        sleep .1
+
+        create_lvm_partitions
 
         echo "Encrypting partition..."
         echo $encryption_key | cryptsetup luksFormat /dev/disk/by-partlabel/ArchLVM
         echo "Open encrypted partition..."
         echo $encryption_key | cryptsetup open /dev/disk/by-partlabel/ArchLVM cryptlvm
 
-        echo "Creating physical volume..."
-        pvcreate /dev/mapper/cryptlvm
-        echo "Creating volume group..."
-        vgcreate ArchLinuxVG /dev/mapper/cryptlvm
-        echo "Creating logical volumes..."
-        lvcreate --yes -L 16G -n swap /dev/ArchLinuxVG
-        lvcreate --yes -L 50G -n root /dev/ArchLinuxVG
-        lvcreate --yes -l 100%FREE -n home /dev/ArchLinuxVG
+        readonly MAIN_PARTITION="/dev/mapper/cryptlvm"
 
-        echo "Formatting partitions"
-        mkfs.fat -F 32 /dev/disk/by-partlabel/ArchBoot
-        mkswap /dev/ArchLinuxVG/swap
-        mkfs.ext4 /dev/ArchLinuxVG/root
-        mkfs.ext4 /dev/ArchLinuxVG/home
+        lvm_setup
 
-        mount /dev/ArchLinuxVG/root /mnt
+        readonly BOOT_PARTITION="/dev/disk/by-partlabel/ArchBoot"
+        readonly SWAP_PARTITION="/dev/ArchLinuxVG/swap"
+        readonly ROOT_PARTITION="/dev/ArchLinuxVG/root"
+        readonly HOME_PARTITION="/dev/ArchLinuxVG/home"
 
-        echo "Creating mountpoints..."
-        mkdir /mnt/boot /mnt/home
-
-        echo "Mounting partitions..."
-        mount /dev/disk/by-partlabel/ArchBoot /mnt/boot
-        mount /dev/ArchLinuxVG/home /mnt/home
-
-        echo "Enabling swap..."
-        swapon /dev/ArchLinuxVG/swap
+        format_partitions
+        mount_partitions
 
         echo "Installing base packages..."
         pacstrap -K /mnt base linux linux-firmware vim lvm2 man-db man-pages texinfo
@@ -260,9 +251,8 @@ EOF
         add_encrypt_hook
         regenerate_initramfs
         install_grub
-    ;;
-    5)# experiment
-    ;;
+        ;;
     *)
-    ;;
+        usage
+        ;;
 esac
