@@ -14,6 +14,7 @@ readonly LVM_ENCRYPTED="lvm_encrypted"
 installation_type=$EXT4_UNENCRYPTED
 encryption_key=""
 root_passwd="arch"
+hostname="arch"
 timezone=$(date "+%Z")
 
 usage() {
@@ -40,7 +41,7 @@ post_install() {
         echo -e "LANG=es_ES.UTF-8\nLC_MESSAGES=en_US.UTF-8" > /etc/locale.conf
 
         echo "Setting hostname..."
-        echo abdn > /etc/hostname
+        echo $hostname > /etc/hostname
 
         echo "Setting root password..."
         echo "root:$root_passwd" | chpasswd
@@ -152,6 +153,10 @@ while [[ "$#" -gt 0 ]]; do
             ;;
         --timezone)
             timezone="$2";
+            shift
+            ;;
+        --hostname|-h)
+            hostname="$2";
             shift
             ;;
         *)
