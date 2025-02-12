@@ -14,6 +14,7 @@ readonly LVM_ENCRYPTED="lvm_encrypted"
 installation_type=$EXT4_UNENCRYPTED
 encryption_key=""
 root_passwd=""
+timezone=$(date "+%Z")
 
 usage() {
     echo "Uso: $0 --parametro1 <valor1> --parametro2 <valor2> ... --parametron <valorn>"
@@ -27,7 +28,7 @@ post_install() {
     echo "Chroot..."
     arch-chroot /mnt /bin/bash << EOF
         echo "Setting timezone..."
-        ln -sf /usr/share/zoneinfo/Europe/Madrid /etc/localtime
+        ln -sf /usr/share/zoneinfo/$timezone /etc/localtime
 
         echo "Setting hardware clock"
         hwclock --systohc
@@ -147,6 +148,10 @@ while [[ "$#" -gt 0 ]]; do
             ;;
         --root_passwd|-p)
             root_passwd="$2";
+            shift
+            ;;
+        --timezone)
+            timezone="$2";
             shift
             ;;
         *)
