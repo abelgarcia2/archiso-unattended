@@ -152,7 +152,6 @@ if [ -z "$(stat $1 2> /dev/null | grep 'block special file')" ]; then
 fi
 
 readonly MAIN_DRIVE_DEVICE="$1"
-
 shift
 
 while [[ "$#" -gt 0 ]]; do
@@ -295,6 +294,7 @@ case "$installation_type" in
         install_grub
         ;;
     *)
+        echo "[unattended-install] ERROR: $installation_type is unknown installation type "
         usage
         ;;
 esac
