@@ -166,10 +166,18 @@ while [[ "$#" -gt 0 ]]; do
             ;;
         --root_passwd|-p)
             root_passwd="$2";
+            if [ -z "$root_passwd" ]; then
+                echo "[unattended-install] ERROR: Root password cannot be empty"
+                usage
+            fi
             shift
             ;;
         --timezone)
             timezone="$2";
+            if [ ! -e "/usr/share/zoneinfo/$timezone" ]; then
+                echo "[unattended-install] ERROR: $timezone is not a valid timezone"
+                usage
+            fi
             shift
             ;;
         --hostname|-h)
