@@ -187,7 +187,13 @@ while [[ "$#" -gt 0 ]]; do
     shift
 done
 
-if [[ -z "$installation_type" || ("$installation_type" = "$LVM_ENCRYPTED" && -z "$encryption_key") ]]; then
+if [ -z "$installation_type" ]; then
+    echo "[unattended-install] ERROR: Installation type cannot be empty"
+    usage
+fi
+
+if [[ "$installation_type" = "$LVM_ENCRYPTED" && -z "$encryption_key" ]]; then
+    echo "[unattended-install] ERROR: Must be provide an encryption key for use encryption"
     usage
 fi
 
