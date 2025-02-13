@@ -1,13 +1,7 @@
 #!/bin/bash
 
-readonly USB_DEVICE_ID="ata-VBOX_HARDDISK_VBc97770ca-2e3eabdb" # For encrypted /boot and LUKS header
-readonly USB_DEVICE="/dev/disk/by-id/$USB_DEVICE_ID"
-
-readonly MAIN_DRIVE_ID="ata-VBOX_HARDDISK_VBc6278c2a-190d4419" 
-readonly MAIN_DRIVE_DEVICE="/dev/disk/by-id/$MAIN_DRIVE_ID" 
-
+# Installation types
 readonly EXT4_UNENCRYPTED="ext4"
-
 readonly LVM_UNENCRYPTED="lvm"
 readonly LVM_ENCRYPTED="lvm_encrypted"
 
@@ -150,6 +144,16 @@ create_lvm_partitions() {
 EOF
     sleep .1
 }
+
+if [ -z "$(stat $1 2> /dev/null | grep 'block special file')" ]; then
+    echo "[unattended-install] ERROR: $1 is not a valid block device"
+    usage
+    exit 1
+fi
+
+readonly MAIN_DRIVE_DEVICE="$1"
+
+shift
 
 while [[ "$#" -gt 0 ]]; do
     case $1 in
