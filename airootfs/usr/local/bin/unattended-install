@@ -189,6 +189,7 @@ while [[ "$#" -gt 0 ]]; do
             shift
             ;;
         *)
+            echo "[unattended-install] ERROR: $1 is unknown parameter"
             usage
             ;;
     esac
