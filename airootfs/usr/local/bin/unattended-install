@@ -17,13 +17,34 @@ root_size="50G"
 home_size="-"
 
 usage() {
-    # installation type --> default ext4
-    # encryption_key
-    # root_passwd --> default arch
-    # hostname --> default arch
-    # timezone --> default current (UTC)
-    # swap --> default = RAM // IN GIGABYTES!! // DISABLE EMPTY
-    echo "Uso: $0 --parametro1 <valor1> --parametro2 <valor2> ... --parametron <valorn>"
+    echo
+    echo "Usage:"
+    echo "$0 DEVICE [OPTION]"
+    echo
+    echo "Automate basic ArchLinux installation"
+    echo
+    echo "Options:"
+    echo "-t, --installation_type   Set the installation type (ext4, lvm, lvm_encrypted) (default: ext4)"
+    echo "-e, --encryption_key      Set the encryption key for LUKS2 encrypted device"
+    echo "-p, --root_passwd         Set the root password (default: arch)"
+    echo "--timezone                Set the system timezone (default: UTC)"
+    echo "--host, --hostname        Set the system hostname (default: arch)"
+    echo "--swap                    Set the swap size, pass empty to disable swap (default: RAM size)"
+    echo "--boot                    Set the boot partition size (default: 1G)"
+    echo "--root                    Set the root partition size (default: 50G)"
+    echo "--home                    Set the home partition size, pass - to use all free space (default: all free space)"
+    echo "--help                    Display this help and exit"
+    echo
+    echo "Examples:"
+    echo "unattended-install /dev/sda -p test --swap"
+    echo "unattended-install /dev/sda --home 100G"
+    echo "unattended-install /dev/sda --boot 512M --timezone Europe/Madrid"
+    echo "unattended-install /dev/sda -e secret --hostname homePC"
+    echo
+    echo "Installation types:"
+    echo "ext4                      Use ext4 formated partitions"
+    echo "lvm                       Use lvm volumes"
+    echo "lvm_encrypted             Use lvm volumes on LUKS2 encrypted partition"
     exit 1
 }
 
@@ -164,6 +185,9 @@ shift
 
 while [[ "$#" -gt 0 ]]; do
     case $1 in
+        --help|-h)
+            usage
+            ;;
         --installation_type|-t)
             installation_type="$2";
             shift
@@ -188,7 +212,7 @@ while [[ "$#" -gt 0 ]]; do
             fi
             shift
             ;;
-        --hostname|-h)
+        --hostname|--host)
             hostname="$2";
             shift
             ;;
