@@ -12,6 +12,9 @@ hostname="arch"
 timezone=$(date "+%Z")
 
 swap_size=$(free --giga|grep "Mem"|awk '{print $2}')G
+boot_size="1G"
+root_size="50G"
+home_size="-"
 
 usage() {
     # installation type --> default ext4
@@ -126,8 +129,13 @@ lvm_setup() {
     if [ -n $swap_size ]; then
         lvcreate --yes -L "$swap_size" -n swap /dev/ArchLinuxVG
     fi
-    lvcreate --yes -L 50G -n root /dev/ArchLinuxVG
-    lvcreate --yes -l 100%FREE -n home /dev/ArchLinuxVG
+    lvcreate --yes -L $root_size -n root /dev/ArchLinuxVG
+
+    if [ "$home_size" = "-" ]; then
+        lvcreate --yes -l 100%FREE -n home /dev/ArchLinuxVG
+    else
+        lvcreate --yes -L "$home_size" -n home /dev/ArchLinuxVG
+    fi
 }
 
 create_lvm_partitions() {
@@ -139,7 +147,7 @@ create_lvm_partitions() {
         --backup \
         $MAIN_DRIVE_DEVICE << EOF
         label: gpt
-        size=1G,type=uefi,name=ArchBoot
+        size=$boot_size,type=uefi,name=ArchBoot
         size=-,type=lvm,name=ArchLVM
 EOF
     sleep .1
@@ -188,6 +196,18 @@ while [[ "$#" -gt 0 ]]; do
             swap_size="$2"
             shift
             ;;
+        --boot)
+            boot_size="$2"
+            shift
+            ;;
+        --root)
+            root_size="$2"
+            shift
+            ;;
+        --home)
+            home_size="$2"
+            shift
+            ;;
         *)
             echo "[unattended-install] ERROR: $1 is unknown parameter"
             usage
@@ -221,12 +241,12 @@ case "$installation_type" in
         echo "Using unencrypted ext4 partitions"
         sleep .5
 
-        sfdisk_cmd="label:gpt\nsize=1G,type=uefi,name=ArchBoot\n"
+        sfdisk_cmd="label:gpt\nsize=$boot_size,type=uefi,name=ArchBoot\n"
         if [ -n "$swap_size" ]; then
             sfdisk_cmd+="size=$swap_size,type=swap,name=ArchSwap\n"
         fi
-        sfdisk_cmd+="size=50G,type=linux,name=ArchRoot\n"
-        sfdisk_cmd+="size=-,type=linux,name=ArchHome"
+        sfdisk_cmd+="size=$root_size,type=linux,name=ArchRoot\n"
+        sfdisk_cmd+="size=$home_size,type=linux,name=ArchHome"
 
         echo "Creating partitions..."
         echo -e "$sfdisk_cmd" | sfdisk \
