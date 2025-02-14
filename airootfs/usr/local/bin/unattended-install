@@ -9,7 +9,7 @@ installation_type=$EXT4_UNENCRYPTED
 encryption_key=""
 root_passwd="arch"
 hostname="arch"
-timezone=$(date "+%Z")
+timezone="UTC"
 
 swap_size=$(free --giga|grep "Mem"|awk '{print $2}')G
 boot_size="1G"
