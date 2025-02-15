@@ -21,7 +21,7 @@ usage() {
     echo "Usage:"
     echo "$0 DEVICE [OPTION]"
     echo
-    echo "Automate basic ArchLinux installation"
+    echo "Automate basic Arch Linux installation"
     echo
     echo "Options:"
     echo "-t, --installation_type   Set the installation type (ext4, lvm, lvm_encrypted) (default: ext4)"
