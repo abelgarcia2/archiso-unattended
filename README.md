@@ -52,6 +52,7 @@ unattended-install /dev/sda --installation_type lvm_encrypted --encryption_key s
 - Boot Partition Size: 1G
 - Root Partition Size: 50G
 - Home Partition Size: remaining free space
+- Reboot machine after install: no
 
 ## Options
 - `-t, --installation_type`: Set the installation type (ext4, lvm, lvm_encrypted) (default: ext4)
@@ -59,6 +60,7 @@ unattended-install /dev/sda --installation_type lvm_encrypted --encryption_key s
 - `-p, --root_passwd`: Set the root password (default: arch)
 - `--timezone`: Set the system timezone (default: UTC)
 - `--host, --hostname`: Set the system hostname (default: arch)
+- `--reboot`: Reboot machine after install
 - `--swap`: Set the swap size, pass empty to disable swap (default: RAM size)
 - `--boot`: Set the boot partition size (default: 1G)
 - `--root`: Set the root partition size (default: 50G)

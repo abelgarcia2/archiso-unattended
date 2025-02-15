@@ -10,6 +10,7 @@ encryption_key=""
 root_passwd="arch"
 hostname="arch"
 timezone="UTC"
+reboot=0
 
 swap_size=$(free --giga|grep "Mem"|awk '{print $2}')G
 boot_size="1G"
@@ -29,6 +30,7 @@ usage() {
     echo "-p, --root_passwd         Set the root password (default: arch)"
     echo "--timezone                Set the system timezone (default: UTC)"
     echo "--host, --hostname        Set the system hostname (default: arch)"
+    echo "--reboot                  Reboot machine after install"
     echo "--swap                    Set the swap size, pass empty to disable swap (default: RAM size)"
     echo "--boot                    Set the boot partition size (default: 1G)"
     echo "--root                    Set the root partition size (default: 50G)"
@@ -216,6 +218,10 @@ while [[ "$#" -gt 0 ]]; do
             hostname="$2";
             shift
             ;;
+        --reboot)
+            reboot=1
+            shift
+            ;;
         --swap)
             swap_size="$2"
             shift
@@ -357,3 +363,6 @@ case "$installation_type" in
         usage
         ;;
 esac
+if [ "$reboot" -eq 1 ]; then
+    reboot
+fi
