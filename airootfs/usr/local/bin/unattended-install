@@ -31,7 +31,7 @@ usage() {
     echo "--timezone                Set the system timezone (default: UTC)"
     echo "--host, --hostname        Set the system hostname (default: arch)"
     echo "--reboot                  Reboot machine after install"
-    echo "--swap                    Set the swap size, pass empty to disable swap (default: RAM size)"
+    echo "--swap                    Set the swap size, pass '-' to disable swap (default: RAM size)"
     echo "--boot                    Set the boot partition size (default: 1G)"
     echo "--root                    Set the root partition size (default: 50G)"
     echo "--home                    Set the home partition size, pass - to use all free space (default: all free space)"
@@ -192,11 +192,19 @@ while [[ "$#" -gt 0 ]]; do
             ;;
         --installation_type|-t)
             installation_type="$2";
-            shift
+            if [ -z "$installation_type" ]; then
+                echo "[unattended-install] ERROR: Installation type cannot be empty"
+                usage
+            fi
+            shift 2
             ;;
         --encryption_key|-e)
             encryption_key="$2";
-            shift
+            if [ -z "$encryption_key" ]; then
+                echo "[unattended-install] ERROR: Encryption key cannot be empty"
+                usage
+            fi
+            shift 2
             ;;
         --root_passwd|-p)
             root_passwd="$2";
@@ -204,52 +212,70 @@ while [[ "$#" -gt 0 ]]; do
                 echo "[unattended-install] ERROR: Root password cannot be empty"
                 usage
             fi
-            shift
+            shift 2
             ;;
         --timezone)
             timezone="$2";
+            if [ -z "$timezone" ]; then
+                echo "[unattended-install] ERROR: Timezone cannot be empty"
+                usage
+            fi
             if [ ! -e "/usr/share/zoneinfo/$timezone" ]; then
                 echo "[unattended-install] ERROR: $timezone is not a valid timezone"
                 usage
             fi
-            shift
+            shift 2
             ;;
         --hostname|--host)
             hostname="$2";
-            shift
+            if [ -z "$hostname" ]; then
+                echo "[unattended-install] ERROR: Hostname cannot be empty"
+                usage
+            fi
+            shift 2
             ;;
         --reboot)
             reboot=1
             shift
             ;;
         --swap)
-            swap_size="$2"
-            shift
+            if [ "$2" = "-" ]; then
+                swap_size=""
+            else
+                swap_size="$2"
+            fi
+            shift 2
             ;;
         --boot)
             boot_size="$2"
-            shift
+            if [ -z "$boot_size" ]; then
+                echo "[unattended-install] ERROR: Boot partition size cannot be empty"
+                usage
+            fi
+            shift 2
             ;;
         --root)
             root_size="$2"
-            shift
+            if [ -z "$root_size" ]; then
+                echo "[unattended-install] ERROR: Root partition size cannot be empty"
+                usage
+            fi
+            shift 2
             ;;
         --home)
             home_size="$2"
-            shift
+            if [ -z "$home_size" ]; then
+                echo "[unattended-install] ERROR: Home partition size cannot be empty"
+                usage
+            fi
+            shift 2
             ;;
         *)
             echo "[unattended-install] ERROR: $1 is unknown parameter"
             usage
             ;;
     esac
-    shift
 done
-
-if [ -z "$installation_type" ]; then
-    echo "[unattended-install] ERROR: Installation type cannot be empty"
-    usage
-fi
 
 if [[ "$installation_type" = "$LVM_ENCRYPTED" && -z "$encryption_key" ]]; then
     echo "[unattended-install] ERROR: Must be provide an encryption key for use encryption"

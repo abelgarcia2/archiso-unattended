@@ -61,7 +61,7 @@ unattended-install /dev/sda --installation_type lvm_encrypted --encryption_key s
 - `--timezone`: Set the system timezone (default: UTC)
 - `--host, --hostname`: Set the system hostname (default: arch)
 - `--reboot`: Reboot machine after install
-- `--swap`: Set the swap size, pass empty to disable swap (default: RAM size)
+- `--swap`: Set the swap size, pass '-' to disable swap (default: RAM size)
 - `--boot`: Set the boot partition size (default: 1G)
 - `--root`: Set the root partition size (default: 50G)
 - `--home`: Set the home partition size, pass - to use all free space (default: all free space)
