@@ -106,7 +106,7 @@ install_grub() {
 
         if [ "$installation_type" = "$LVM_ENCRYPTED" ]; then
             uuid=\$(blkid -t PARTLABEL=ArchLVM|awk '{print \$2}'|tr -d \")
-            sed -i "s/^GRUB_CMDLINE_LINUX_DEFAULT=\"[^\"]*/& cryptdevice=\$uuid:cryptlvm/" /etc/default/grub
+            sed -i "s/^GRUB_CMDLINE_LINUX_DEFAULT=\"[^\"]*/& cryptdevice=\$uuid:cryptarch/" /etc/default/grub
         fi
 
         if [ "$installation_type" = "$LVM_UNENCRYPTED" ] || [ "$installation_type" = "$LVM_ENCRYPTED" ]; then
@@ -335,9 +335,9 @@ case "$installation_type" in
         echo "Encrypting partition..."
         echo $encryption_key | cryptsetup luksFormat /dev/disk/by-partlabel/ArchLVM
         echo "Open encrypted partition..."
-        echo $encryption_key | cryptsetup open /dev/disk/by-partlabel/ArchLVM cryptlvm
+        echo $encryption_key | cryptsetup open /dev/disk/by-partlabel/ArchLVM cryptarch
 
-        readonly MAIN_PARTITION="/dev/mapper/cryptlvm"
+        readonly MAIN_PARTITION="/dev/mapper/cryptarch"
 
         lvm_setup
 
