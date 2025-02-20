@@ -1,0 +1,71 @@
+name: Build and publish ISO
+
+permissions:
+  contents: write
+
+on:
+  push:
+    tags:
+      - "v*.*.*"
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install Dependencies
+        run: |
+          sudo apt update
+          sudo apt install -y git arch-install-scripts gawk dosfstools e2fsprogs \
+          findutils grub-common gzip libarchive-dev libisoburn-dev mtools openssl pacman-package-manager \
+          sed squashfs-tools ovmf shellcheck docutils-common qemu-kvm debian-archive-keyring xorriso
+
+      - name: Add trixie sources
+        run: |
+          cat <<EOF | sudo tee /etc/apt/sources.list.d/debian.sources > /dev/null
+          Types: deb
+          URIs: https://deb.debian.org/debian
+          Suites: trixie
+          Components: main
+          Signed-By: /usr/share/keyrings/debian-archive-keyring.gpg
+          EOF
+          cat <<EOF | sudo tee /etc/apt/preferences.d/trixie.pref > /dev/null
+          Package: *
+          Pin: release n=trixie
+          Pin-Priority: -1
+          EOF
+          sudo apt update
+
+      - name: Pacman set up
+        run: |
+          sudo mkdir /etc/pacman.d
+          curl -s "https://archlinux.org/mirrorlist/?country=all&protocol=http&protocol=https&ip_version=4" \
+          | sed 's/^#//' \
+          | sudo tee /etc/pacman.d/mirrorlist > /dev/null
+          cat <<EOF | sudo tee -a /etc/pacman.conf > /dev/null
+          [core]
+          SigLevel = Required DatabaseOptional
+          Include = /etc/pacman.d/mirrorlist
+
+          [extra]
+          Include = /etc/pacman.d/mirrorlist
+          EOF
+          sudo apt -t trixie install -y archlinux-keyring
+          sudo pacman-key --init
+          sudo pacman-key --populate archlinux
+
+      - name: Build mkarchiso package
+        run: |
+          git clone https://gitlab.archlinux.org/archlinux/archiso.git
+          cd archiso
+          sudo make install
+
+      - name: Build ISO
+        run: sudo mkarchiso -v -w /tmp/archiso $GITHUB_WORKSPACE
+
+      - name: Publish Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: out/*.iso
