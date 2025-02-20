@@ -4,6 +4,7 @@
 readonly EXT4_UNENCRYPTED="ext4"
 readonly LVM_UNENCRYPTED="lvm"
 readonly LVM_ENCRYPTED="lvm_encrypted"
+readonly LVM_ENCRYPTED_DETACHED="lvm_detached"
 
 installation_type=$EXT4_UNENCRYPTED
 encryption_key=""
@@ -16,6 +17,8 @@ swap_size=$(free --giga|grep "Mem"|awk '{print $2}')G
 boot_size="1G"
 root_size="50G"
 home_size="-"
+
+usb_drive=""
 
 usage() {
     echo
@@ -35,6 +38,7 @@ usage() {
     echo "--boot                    Set the boot partition size (default: 1G)"
     echo "--root                    Set the root partition size (default: 50G)"
     echo "--home                    Set the home partition size, pass - to use all free space (default: all free space)"
+    echo "--usb                     Set the usb drive to save encrypted /boot and detached LUKS header (only useful in lvm_detached installation)"
     echo "--help                    Display this help and exit"
     echo
     echo "Examples:"
@@ -47,6 +51,7 @@ usage() {
     echo "ext4                      Use ext4 formated partitions"
     echo "lvm                       Use lvm volumes"
     echo "lvm_encrypted             Use lvm volumes on LUKS2 encrypted partition"
+    echo "lvm_detached              Use lvm volumes on LUKS2 encrypted partition with a detached header and also /boot encrypted in an usb"
     exit 1
 }
 
@@ -73,6 +78,13 @@ post_install() {
 
         echo "Setting root password..."
         echo "root:$root_passwd" | chpasswd
+
+        if [[ "$installation_type" = "$LVM_UNENCRYPTED" \
+            || "$installation_type" = "$LVM_ENCRYPTED" \
+            || "$installation_type" = "$LVM_ENCRYPTED_DETACHED"
+        ]]; then
+            pacman -S --noconfirm lvm2
+        fi
 EOF
 }
 
@@ -99,10 +111,11 @@ EOF
 
 
 install_grub() {
+    local efi_directory=${1:-"/boot"}
+
     arch-chroot /mnt /bin/bash << EOF 
         echo "Installing and configuring GRUB..."
         pacman -S --noconfirm grub efibootmgr
-        grub-install --target=x86_64-efi --efi-directory=/boot --bootloader-id=ArchLinuxGRUB
 
         if [ "$installation_type" = "$LVM_ENCRYPTED" ]; then
             uuid=\$(blkid -t PARTLABEL=ArchLVM|awk '{print \$2}'|tr -d \")
@@ -113,13 +126,24 @@ install_grub() {
             sed -i 's/^GRUB_CMDLINE_LINUX_DEFAULT="[^"]*/& root=\/dev\/ArchLinuxVG\/root/' /etc/default/grub
         fi
 
+        if [ "$installation_type" = "$LVM_ENCRYPTED_DETACHED" ]; then
+            sed -i "/GRUB_ENABLE_CRYPTODISK=y/s/^#//" /etc/default/grub
+        fi
+
+        grub-install --target=x86_64-efi --efi-directory=$efi_directory --bootloader-id=ArchLinuxGRUB
+
         grub-mkconfig -o /boot/grub/grub.cfg
 EOF
 }
 
 format_partitions() {
     echo "Formatting partitions"
-    mkfs.fat -F 32 $BOOT_PARTITION
+    if [ -n "$EFI_PARTITION" ]; then
+        mkfs.fat -F 32 "$EFI_PARTITION"
+    else
+        mkfs.fat -F 32 "$BOOT_PARTITION"
+    fi
+
     if [ -n $swap_size ]; then
         mkswap $SWAP_PARTITION
     fi
@@ -140,6 +164,11 @@ mount_partitions() {
     if [ -n $swap_size ]; then
         echo "Enabling swap..."
         swapon $SWAP_PARTITION
+    fi
+
+    if [ -n "$EFI_PARTITION" ]; then
+        mkdir /mnt/boot/efi
+        mount "$EFI_PARTITION" /mnt/boot/efi
     fi
 }
 
@@ -174,6 +203,46 @@ create_lvm_partitions() {
         size=-,type=lvm,name=ArchLVM
 EOF
     sleep .1
+}
+
+create_custom_encrypt_hook() {
+    echo "Creating custom encrypt hook..."
+    cat << EOF > /mnt/etc/initcpio/hooks/customencrypt
+#!/usr/bin/ash
+
+run_hook() {
+    modprobe -a -q dm-crypt >/dev/null 2>&1
+    modprobe loop
+    [ "\${quiet}" = "y" ] && CSQUIET=">/dev/null"
+
+    while [ ! -L '/dev/disk/by-partlabel/ArchBoot' ]; do
+     echo 'Waiting for USB'
+     sleep 1
+    done
+
+    cryptsetup open /dev/disk/by-partlabel/ArchBoot cryptboot
+    mount --mkdir /dev/mapper/cryptboot /mnt
+
+    cryptsetup --header=/mnt/header.img --key-file=/mnt/key.img open /dev/disk/by-id/$(lsblk -o ID-LINK $MAIN_DRIVE_DEVICE|sed -n "2p") cryptroot
+    umount /mnt
+}
+EOF
+    cp /mnt/usr/lib/initcpio/install/encrypt /mnt/etc/initcpio/install/customencrypt
+    sed -i '/help() {/,/}/d' /mnt/etc/initcpio/install/customencrypt
+
+    echo "Adding custom encrypt hook..."
+    arch-chroot /mnt /bin/bash << EOF
+        sed -ri "s/(^HOOKS=.*)(block)(.*)(lvm2)/\1\2 customencrypt \4/" /etc/mkinitcpio.conf
+        echo "Adding loop module to initcpio"
+        sed -i "/^MODULES=/s/)/ loop&/" /etc/mkinitcpio.conf
+EOF
+}
+
+install_base_packages() {
+    echo "Installing base packages..."
+    pacstrap -K /mnt base linux linux-firmware vim man-db man-pages texinfo
+        echo "Installing base packages..."
+        pacstrap -K /mnt base linux linux-firmware vim lvm2 man-db man-pages texinfo
 }
 
 if [ -z "$(stat -L $1 2> /dev/null | grep 'block special file')" ]; then
@@ -270,6 +339,18 @@ while [[ "$#" -gt 0 ]]; do
             fi
             shift 2
             ;;
+        --usb)
+            usb_drive="$2"
+            if [ -n "$usb_drive" ]; then
+                if [ -z "$(stat $usb_drive 2> /dev/null | grep 'block special file')" ]; then
+                    echo "[unattended-install] ERROR: $usb_drive is not a valid block device"
+                    usage
+                fi
+                shift 2
+            else
+                shift
+            fi
+            ;;
         *)
             echo "[unattended-install] ERROR: $1 is unknown parameter"
             usage
@@ -277,8 +358,13 @@ while [[ "$#" -gt 0 ]]; do
     esac
 done
 
-if [[ "$installation_type" = "$LVM_ENCRYPTED" && -z "$encryption_key" ]]; then
+if [[ ("$installation_type" = "$LVM_ENCRYPTED" || "$installation_type" = "$LVM_ENCRYPTED_DETACHED" ) && -z "$encryption_key" ]]; then
     echo "[unattended-install] ERROR: Must be provide an encryption key for use encryption"
+    usage
+fi
+
+if [[ "$installation_type" = "$LVM_ENCRYPTED_DETACHED" && -z "$usb_drive" ]]; then
+    echo "[unattended-install] ERROR: Must be provide an usb drive to store /boot and detached LUKS header in lvm_detached installation"
     usage
 fi
 
@@ -320,8 +406,7 @@ case "$installation_type" in
         format_partitions
         mount_partitions
 
-        echo "Installing base packages..."
-        pacstrap -K /mnt base linux linux-firmware vim man-db man-pages texinfo
+        install_base_packages
 
         post_install
         install_grub
@@ -344,8 +429,7 @@ case "$installation_type" in
         format_partitions
         mount_partitions
 
-        echo "Installing base packages..."
-        pacstrap -K /mnt base linux linux-firmware vim lvm2 man-db man-pages texinfo
+        install_base_packages
 
         post_install
         add_lvm2_hook
@@ -375,14 +459,88 @@ case "$installation_type" in
         format_partitions
         mount_partitions
 
-        echo "Installing base packages..."
-        pacstrap -K /mnt base linux linux-firmware vim lvm2 man-db man-pages texinfo
+        install_base_packages
 
         post_install
         add_lvm2_hook
         add_encrypt_hook
         regenerate_initramfs
         install_grub
+        ;;
+    $LVM_ENCRYPTED_DETACHED)
+        echo "Using encrypted lvm partitions with detached LUKS header"
+        sleep .5
+
+        echo "Creating partitions..."
+        echo -e "size=512M,type=uefi,name=ArchUEFI\nsize=1G,type=linux,name=ArchBoot" | \
+        sfdisk \
+            --append \
+            --wipe-partitions always \
+            --backup \
+            $usb_drive
+        sleep 1
+
+        echo "Encrypting /boot partition..."
+        echo "$encryption_key" | cryptsetup \
+            --cipher=twofish-xts-plain64 \
+            --iter-time 5000 \
+            --pbkdf pbkdf2 \
+            luksFormat /dev/disk/by-partlabel/ArchBoot
+
+        echo "Open encrypted /boot partition..."
+        echo "$encryption_key" | cryptsetup open /dev/disk/by-partlabel/ArchBoot cryptboot
+
+        echo "Formatting /boot partition..."
+        mkfs.ext2 -F /dev/mapper/cryptboot
+
+        mount /dev/mapper/cryptboot /mnt
+
+        echo "Creating key file..."
+        dd if=/dev/urandom of=/mnt/key.img bs=4096 count=1 iflag=fullblock
+
+        echo "Creating header file..."
+        truncate -s 16M /mnt/header.img
+
+        echo "Encrypting main device..."
+        cryptsetup \
+            --batch-mode \
+            --cipher=serpent-xts-plain64 \
+            --key-size=512 \
+            --iter-time 5000 \
+            luksFormat $MAIN_DRIVE_DEVICE \
+            --header=/mnt/header.img \
+            --key-file=/mnt/key.img
+
+        echo "Openning encrypted main device..."
+        cryptsetup \
+            open $MAIN_DRIVE_DEVICE cryptroot \
+            --key-file=/mnt/key.img \
+            --header=/mnt/header.img
+
+        umount /mnt
+
+        readonly MAIN_PARTITION="/dev/mapper/cryptroot"
+
+        lvm_setup
+
+        readonly BOOT_PARTITION="/dev/mapper/cryptboot"
+        readonly EFI_PARTITION="/dev/disk/by-partlabel/ArchUEFI"
+        readonly SWAP_PARTITION="/dev/ArchLinuxVG/swap"
+        readonly ROOT_PARTITION="/dev/ArchLinuxVG/root"
+        readonly HOME_PARTITION="/dev/ArchLinuxVG/home"
+
+        format_partitions
+        mount_partitions
+
+        install_base_packages
+
+        post_install
+        add_lvm2_hook
+
+        create_custom_encrypt_hook
+        regenerate_initramfs
+
+        install_grub "/boot/efi"
         ;;
     *)
         echo "[unattended-install] ERROR: $installation_type is unknown installation type "
