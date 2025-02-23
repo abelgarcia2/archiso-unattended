@@ -11,6 +11,9 @@ jobs:
 
       - name: List disks
         run: sudo lsblk && ls -l /dev/disk/by-path
+      
+      - name: Test connection
+        run: ping -c 1 archlinux.org
 
       - name: ext4 unencrypted installation
         run: $GITHUB_WORKSPACE/airootfs/usr/local/bin/unattended-install \
