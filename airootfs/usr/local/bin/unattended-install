@@ -287,7 +287,7 @@ echo "Running unattended archlinux installation at $(date --rfc-3339=seconds)...
 sleep 1
 
 echo "Testing internet connection..."
-if ! ping -c 1 archlinux.org > /dev/null 2>&1; then
+if ! nslookup archlinux.org > /dev/null 2>&1; then
     echo "[unattended-install] ERROR: No Internet Connection. Please check your connection and try again."
     exit 1
 fi
