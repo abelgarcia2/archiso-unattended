@@ -176,7 +176,7 @@ EOF
     sleep .1
 }
 
-if [ -z "$(stat $1 2> /dev/null | grep 'block special file')" ]; then
+if [ -z "$(stat -L $1 2> /dev/null | grep 'block special file')" ]; then
     echo "[unattended-install] ERROR: $1 is not a valid block device"
     usage
     exit 1
