@@ -241,8 +241,6 @@ EOF
 install_base_packages() {
     echo "Installing base packages..."
     pacstrap -K /mnt base linux linux-firmware vim man-db man-pages texinfo
-        echo "Installing base packages..."
-        pacstrap -K /mnt base linux linux-firmware vim lvm2 man-db man-pages texinfo
 }
 
 if [ -z "$(stat -L $1 2> /dev/null | grep 'block special file')" ]; then
