@@ -44,6 +44,19 @@ an encryption key with `--encryption_key yourkey`. For example:
 unattended-install /dev/sda --installation_type lvm_encrypted --encryption_key secret
 ```
 
+## LVM Encrypted With Detached LUKS Header And Encrypted /boot Installation
+You can use this script to install Arch Linux on a LUKS-encrypted partition with
+a separate LUKS header and an encrypted /boot stored on another disk. To do this use the
+`--installation_type lvm_detached` parameter along with `--encryption_key yourkey` and
+`--usb device`. For example:
+
+```
+unattended-install /dev/sda \
+    --installation_type lvm_detached \
+    --encryption_key secret \
+    --usb /dev/sdb
+```
+
 ## Default Configuration
 - Timezone: UTC
 - Root Password: arch
@@ -55,7 +68,7 @@ unattended-install /dev/sda --installation_type lvm_encrypted --encryption_key s
 - Reboot machine after install: no
 
 ## Options
-- `-t, --installation_type`: Set the installation type (ext4, lvm, lvm_encrypted) (default: ext4)
+- `-t, --installation_type`: Set the installation type (ext4, lvm, lvm_encrypted, lvm_detached) (default: ext4)
 - `-e, --encryption_key`: Set the encryption key for LUKS2 encrypted device
 - `-p, --root_passwd`: Set the root password (default: arch)
 - `--timezone`: Set the system timezone (default: UTC)
@@ -65,3 +78,4 @@ unattended-install /dev/sda --installation_type lvm_encrypted --encryption_key s
 - `--boot`: Set the boot partition size (default: 1G)
 - `--root`: Set the root partition size (default: 50G)
 - `--home`: Set the home partition size, pass - to use all free space (default: all free space)
+- `--usb`: Set the usb drive to save encrypted /boot and detached LUKS header (only useful in lvm_detached installation)"
