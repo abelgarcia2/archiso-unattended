@@ -63,9 +63,12 @@ jobs:
           sudo make install
 
       - name: Build ISO
-        run: sudo mkarchiso -v -w /tmp/archiso $GITHUB_WORKSPACE
+        run: |
+          sudo mkarchiso -v -w /tmp/archiso $GITHUB_WORKSPACE
+          echo "iso_filename=$(ls out)" >> $GITHUB_ENV
 
       - name: Publish Release
         uses: softprops/action-gh-release@v2
         with:
-          files: out/*.iso
+          name: ${{ env.iso_filename }}
+          files: out/${{ env.iso_filename }}
