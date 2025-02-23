@@ -13,7 +13,7 @@ jobs:
         run: sudo lsblk && ls -l /dev/disk/by-path
       
       - name: Test connection
-        run: ping -c 1 archlinux.org
+        run: nslookup 8.8.8.8
 
       - name: ext4 unencrypted installation
         run: $GITHUB_WORKSPACE/airootfs/usr/local/bin/unattended-install \
