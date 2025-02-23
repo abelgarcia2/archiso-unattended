@@ -10,7 +10,7 @@ jobs:
         uses: actions/checkout@v4
 
       - name: List disks
-        run: sudo lsblk && ls -l /dev/disk/by-id
+        run: sudo lsblk && ls -l /dev/disk/by-path
 
       #- name: ext4 unencrypted installation
       #  run: $GITHUB_WORKSPACE/airootfs/usr/local/bin/unattended-install \
