@@ -12,6 +12,6 @@ jobs:
       - name: List disks
         run: sudo lsblk && ls -l /dev/disk/by-path
 
-      #- name: ext4 unencrypted installation
-      #  run: $GITHUB_WORKSPACE/airootfs/usr/local/bin/unattended-install \
-      #    -h
+      - name: ext4 unencrypted installation
+        run: $GITHUB_WORKSPACE/airootfs/usr/local/bin/unattended-install \
+          /dev/disk/by-path/acpi-VMBUS:01-vmbus-00000000000188990000000000000000-lun-0
