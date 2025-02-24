@@ -12,6 +12,7 @@ root_passwd="arch"
 hostname="arch"
 timezone="UTC"
 reboot=0
+keep_usb_data=0
 
 swap_size=$(free --giga|grep "Mem"|awk '{print $2}')G
 boot_size="1G"
@@ -34,6 +35,7 @@ usage() {
     echo "--timezone                Set the system timezone (default: UTC)"
     echo "--host, --hostname        Set the system hostname (default: arch)"
     echo "--reboot                  Reboot machine after install"
+    echo "--keep                    Keep data present in usb device (only useful in lvm_detached installation)"
     echo "--swap                    Set the swap size, pass '-' to disable swap (default: RAM size)"
     echo "--boot                    Set the boot partition size (default: 1G)"
     echo "--root                    Set the root partition size (default: 50G)"
@@ -329,6 +331,10 @@ while [[ "$#" -gt 0 ]]; do
             reboot=1
             shift
             ;;
+        --keep)
+            keep_usb_data=1
+            shift
+            ;;
         --swap)
             if [ "$2" = "-" ]; then
                 swap_size=""
@@ -501,12 +507,22 @@ case "$installation_type" in
         sleep .5
 
         echo "Creating partitions..."
-        echo -e "size=512M,type=uefi,name=ArchUEFI\nsize=1G,type=linux,name=ArchBoot" | \
-        sfdisk \
-            --append \
-            --wipe-partitions always \
-            --backup \
-            $usb_drive
+
+        if [ "$keep_usb_data" -eq 1 ];then
+            echo -e "size=512M,type=uefi,name=ArchUEFI\nsize=1G,type=linux,name=ArchBoot" | \
+            sfdisk \
+                --append \
+                --wipe-partitions always \
+                --backup \
+                $usb_drive
+        else
+            echo -e "size=512M,type=uefi,name=ArchUEFI\nsize=1G,type=linux,name=ArchBoot" | \
+            sfdisk \
+                --wipe-partitions always \
+                --backup \
+                $usb_drive
+        fi
+
         sleep 1
 
         echo "Encrypting /boot partition..."
