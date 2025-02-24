@@ -52,7 +52,6 @@ usage() {
     echo "lvm                       Use lvm volumes"
     echo "lvm_encrypted             Use lvm volumes on LUKS2 encrypted partition"
     echo "lvm_detached              Use lvm volumes on LUKS2 encrypted partition with a detached header and also /boot encrypted in an usb"
-    exit 1
 }
 
 post_install() {
@@ -256,12 +255,14 @@ while [[ "$#" -gt 0 ]]; do
     case $1 in
         --help|-h)
             usage
+            exit 0
             ;;
         --installation_type|-t)
             installation_type="$2";
             if [ -z "$installation_type" ]; then
                 echo "[unattended-install] ERROR: Installation type cannot be empty"
                 usage
+                exit 1
             fi
             shift 2
             ;;
@@ -270,6 +271,7 @@ while [[ "$#" -gt 0 ]]; do
             if [ -z "$encryption_key" ]; then
                 echo "[unattended-install] ERROR: Encryption key cannot be empty"
                 usage
+                exit 1
             fi
             shift 2
             ;;
@@ -278,6 +280,7 @@ while [[ "$#" -gt 0 ]]; do
             if [ -z "$root_passwd" ]; then
                 echo "[unattended-install] ERROR: Root password cannot be empty"
                 usage
+                exit 1
             fi
             shift 2
             ;;
@@ -286,10 +289,12 @@ while [[ "$#" -gt 0 ]]; do
             if [ -z "$timezone" ]; then
                 echo "[unattended-install] ERROR: Timezone cannot be empty"
                 usage
+                exit 1
             fi
             if [ ! -e "/usr/share/zoneinfo/$timezone" ]; then
                 echo "[unattended-install] ERROR: $timezone is not a valid timezone"
                 usage
+                exit 1
             fi
             shift 2
             ;;
@@ -298,6 +303,7 @@ while [[ "$#" -gt 0 ]]; do
             if [ -z "$hostname" ]; then
                 echo "[unattended-install] ERROR: Hostname cannot be empty"
                 usage
+                exit 1
             fi
             shift 2
             ;;
@@ -318,6 +324,7 @@ while [[ "$#" -gt 0 ]]; do
             if [ -z "$boot_size" ]; then
                 echo "[unattended-install] ERROR: Boot partition size cannot be empty"
                 usage
+                exit 1
             fi
             shift 2
             ;;
@@ -326,6 +333,7 @@ while [[ "$#" -gt 0 ]]; do
             if [ -z "$root_size" ]; then
                 echo "[unattended-install] ERROR: Root partition size cannot be empty"
                 usage
+                exit 1
             fi
             shift 2
             ;;
@@ -334,6 +342,7 @@ while [[ "$#" -gt 0 ]]; do
             if [ -z "$home_size" ]; then
                 echo "[unattended-install] ERROR: Home partition size cannot be empty"
                 usage
+                exit 1
             fi
             shift 2
             ;;
@@ -343,6 +352,7 @@ while [[ "$#" -gt 0 ]]; do
                 if [ -z "$(stat $usb_drive 2> /dev/null | grep 'block special file')" ]; then
                     echo "[unattended-install] ERROR: $usb_drive is not a valid block device"
                     usage
+                    exit 1
                 fi
                 shift 2
             else
@@ -352,6 +362,7 @@ while [[ "$#" -gt 0 ]]; do
         *)
             echo "[unattended-install] ERROR: $1 is unknown parameter"
             usage
+            exit 1
             ;;
     esac
 done
@@ -359,11 +370,13 @@ done
 if [[ ("$installation_type" = "$LVM_ENCRYPTED" || "$installation_type" = "$LVM_ENCRYPTED_DETACHED" ) && -z "$encryption_key" ]]; then
     echo "[unattended-install] ERROR: Must be provide an encryption key for use encryption"
     usage
+    exit 1
 fi
 
 if [[ "$installation_type" = "$LVM_ENCRYPTED_DETACHED" && -z "$usb_drive" ]]; then
     echo "[unattended-install] ERROR: Must be provide an usb drive to store /boot and detached LUKS header in lvm_detached installation"
     usage
+    exit 1
 fi
 
 echo "Running unattended archlinux installation at $(date --rfc-3339=seconds)..."
@@ -543,6 +556,7 @@ case "$installation_type" in
     *)
         echo "[unattended-install] ERROR: $installation_type is unknown installation type "
         usage
+        exit 1
         ;;
 esac
 if [ "$reboot" -eq 1 ]; then
