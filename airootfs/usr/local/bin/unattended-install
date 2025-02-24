@@ -242,6 +242,11 @@ install_base_packages() {
     pacstrap -K /mnt base linux linux-firmware vim man-db man-pages texinfo
 }
 
+if [[ "--help" == "$1" || "-h" == "$1" ]];then
+    usage
+    exit 0
+fi
+
 if [ -z "$(stat -L $1 2> /dev/null | grep 'block special file')" ]; then
     echo "[unattended-install] ERROR: $1 is not a valid block device"
     usage
