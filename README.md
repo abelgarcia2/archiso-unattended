@@ -74,6 +74,7 @@ unattended-install /dev/sda \
 - `--timezone`: Set the system timezone (default: UTC)
 - `--host, --hostname`: Set the system hostname (default: arch)
 - `--reboot`: Reboot machine after install
+- `--keep`: Keep data present in usb device (only useful in lvm_detached installation)
 - `--swap`: Set the swap size, pass '-' to disable swap (default: RAM size)
 - `--boot`: Set the boot partition size (default: 1G)
 - `--root`: Set the root partition size (default: 50G)
