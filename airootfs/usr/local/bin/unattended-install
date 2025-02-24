@@ -272,22 +272,35 @@ while [[ "$#" -gt 0 ]]; do
             shift 2
             ;;
         --encryption_key|-e)
-            encryption_key="$2";
+            shift
+            while [[ $# -gt 0 && $1 != -* ]]; do
+                encryption_key+="$1 "
+                shift
+            done
+
+            encryption_key=$(echo "$encryption_key" | sed 's/[[:space:]]*$//')
+
             if [ -z "$encryption_key" ]; then
                 echo "[unattended-install] ERROR: Encryption key cannot be empty"
                 usage
                 exit 1
             fi
-            shift 2
             ;;
         --root_passwd|-p)
-            root_passwd="$2";
+            root_passwd=""
+            shift
+            while [[ $# -gt 0 && $1 != -* ]]; do
+                root_passwd+="$1 "
+                shift
+            done
+
+            root_passwd=$(echo "$root_passwd" | sed 's/[[:space:]]*$//')
+
             if [ -z "$root_passwd" ]; then
                 echo "[unattended-install] ERROR: Root password cannot be empty"
                 usage
                 exit 1
             fi
-            shift 2
             ;;
         --timezone)
             timezone="$2";
